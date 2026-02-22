@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-LLM Chat</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Multi-LLM Chat Comparison</h1>
+        
+        <div id="mode-indicator">
+            <span id="mode-text">Mode: Compare All Models</span>
+            <button id="reset-btn" onclick="resetChat()">Reset Chat</button>
+        </div>
+        
+        <div id="chat-container">
+            <div class="model-column" id="openai-column">
+                <div class="model-header">
+                    <h2>OpenAI GPT-4o-mini</h2>
+                    <button class="continue-btn" onclick="selectModel('openai')">Continue with this</button>
+                </div>
+                <div class="messages" id="openai-messages"></div>
+            </div>
+            
+            <div class="model-column" id="claude-column">
+                <div class="model-header">
+                    <h2>Claude 3.5 Haiku</h2>
+                    <button class="continue-btn" onclick="selectModel('claude')">Continue with this</button>
+                </div>
+                <div class="messages" id="claude-messages"></div>
+            </div>
+            
+            <div class="model-column" id="gemini-column">
+                <div class="model-header">
+                    <h2>Google Gemini 2.5</h2>
+                    <button class="continue-btn" onclick="selectModel('gemini')">Continue with this</button>
+                </div>
+                <div class="messages" id="gemini-messages"></div>
+            </div>
+        </div>
+        
+        <div id="input-container">
+            <input type="text" id="user-input" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+            <button id="send-btn" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+    
+    <!-- Modal Popup -->
+    <div id="modal-overlay" class="modal-overlay" onclick="closeModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modal-title">Confirm Action</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-message">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+                <button class="modal-btn confirm" id="modal-confirm-btn">Confirm</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
