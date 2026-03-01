@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, session
 from dotenv import load_dotenv
 from llm_service import LLMService
+from database import Database
 import os
 from concurrent.futures import ThreadPoolExecutor
 
@@ -10,9 +11,10 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 llm_service = LLMService()
+db = Database()
 
-# Store conversation history per session
-conversations = {}
+# Remove in-memory storage - now using database
+# conversations = {}
 
 @app.route('/')
 def index():
@@ -24,23 +26,25 @@ def chat():
     user_message = data.get('message')
     session_id = data.get('session_id', 'default')
     
-    # Initialize conversation history if not exists
-    if session_id not in conversations:
-        conversations[session_id] = {
-            'openai': [{"role": "system", "content": "You are a helpful assistant."}],
-            'claude': [{"role": "system", "content": "You are a helpful assistant."}],
-            'gemini': [{"role": "system", "content": "You are a helpful assistant."}]
-        }
-    
-    # Add user message to all histories
+    # Load conversation history from database
+    conversations = {}
     for model in ['openai', 'claude', 'gemini']:
-        conversations[session_id][model].append({"role": "user", "content": user_message})
+        messages = db.get_conversation(session_id, model)
+        if messages:
+            conversations[model] = [{"role": role, "content": content} for role, content in messages]
+        else:
+            conversations[model] = [{"role": "system", "content": "You are a helpful assistant."}]
+    
+    # Add user message to all histories and save to DB
+    for model in ['openai', 'claude', 'gemini']:
+        conversations[model].append({"role": "user", "content": user_message})
+        db.save_message(session_id, model, "user", user_message)
     
     # Call all LLMs in parallel
     with ThreadPoolExecutor(max_workers=3) as executor:
-        openai_future = executor.submit(llm_service.call_openai, conversations[session_id]['openai'])
-        claude_future = executor.submit(llm_service.call_claude, conversations[session_id]['claude'])
-        gemini_future = executor.submit(llm_service.call_gemini, conversations[session_id]['gemini'])
+        openai_future = executor.submit(llm_service.call_openai, conversations['openai'])
+        claude_future = executor.submit(llm_service.call_claude, conversations['claude'])
+        gemini_future = executor.submit(llm_service.call_gemini, conversations['gemini'])
         
         responses = {
             'openai': openai_future.result(),
@@ -48,10 +52,9 @@ def chat():
             'gemini': gemini_future.result()
         }
     
-    # Add responses to conversation history
-    conversations[session_id]['openai'].append({"role": "assistant", "content": responses['openai']})
-    conversations[session_id]['claude'].append({"role": "assistant", "content": responses['claude']})
-    conversations[session_id]['gemini'].append({"role": "assistant", "content": responses['gemini']})
+    # Save responses to database
+    for model in ['openai', 'claude', 'gemini']:
+        db.save_message(session_id, model, "assistant", responses[model])
     
     return jsonify(responses)
 
@@ -62,22 +65,27 @@ def continue_chat():
     selected_model = data.get('model')
     session_id = data.get('session_id', 'default')
     
-    if session_id not in conversations:
-        return jsonify({'error': 'Session not found'}), 400
+    # Load conversation history from database
+    messages = db.get_conversation(session_id, selected_model)
+    if messages:
+        conversation = [{"role": role, "content": content} for role, content in messages]
+    else:
+        conversation = [{"role": "system", "content": "You are a helpful assistant."}]
     
-    # Add user message to selected model's history
-    conversations[session_id][selected_model].append({"role": "user", "content": user_message})
+    # Add user message and save to DB
+    conversation.append({"role": "user", "content": user_message})
+    db.save_message(session_id, selected_model, "user", user_message)
     
     # Call only the selected model
     if selected_model == 'openai':
-        response = llm_service.call_openai(conversations[session_id][selected_model])
+        response = llm_service.call_openai(conversation)
     elif selected_model == 'claude':
-        response = llm_service.call_claude(conversations[session_id][selected_model])
+        response = llm_service.call_claude(conversation)
     elif selected_model == 'gemini':
-        response = llm_service.call_gemini(conversations[session_id][selected_model])
+        response = llm_service.call_gemini(conversation)
     
-    # Add response to history
-    conversations[session_id][selected_model].append({"role": "assistant", "content": response})
+    # Save response to database
+    db.save_message(session_id, selected_model, "assistant", response)
     
     return jsonify({'response': response, 'model': selected_model})
 
@@ -85,9 +93,14 @@ def continue_chat():
 def reset():
     data = request.json
     session_id = data.get('session_id', 'default')
-    if session_id in conversations:
-        del conversations[session_id]
+    db.clear_session(session_id)
     return jsonify({'status': 'success'})
+
+@app.route('/history', methods=['GET'])
+def get_history():
+    """Get all saved sessions"""
+    sessions = db.get_all_sessions()
+    return jsonify({'sessions': [{'session_id': s[0], 'created_at': s[1], 'last_activity': s[2]} for s in sessions]})
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -1,6 +1,7 @@
 import os
 from openai import OpenAI
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 class LLMService:
     def __init__(self):
@@ -9,8 +10,7 @@ class LLMService:
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv('OPENROUTER_API_KEY')
         )
-        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
-        self.gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+        self.gemini_client = genai.Client(api_key=os.getenv('GOOGLE_API_KEY'))
     
     def call_openai(self, messages):
         try:
@@ -36,7 +36,10 @@ class LLMService:
         try:
             # Convert messages to Gemini format
             prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages if m['role'] != 'system'])
-            response = self.gemini_model.generate_content(prompt)
+            response = self.gemini_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
             return response.text
         except Exception as e:
             return f"Error: {str(e)}"
